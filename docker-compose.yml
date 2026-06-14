@@ -1,0 +1,90 @@
+version: "3.9"
+
+services:
+  vector-builder:
+    build: .
+    container_name: vector_builder
+    volumes:
+      - ./vectorstore:/app/vectorstore
+      - ./config.yml:/app/config.yml
+      - ${DBT_PROJECT_PATH}:/dbt
+    profiles:
+      - setup
+    depends_on:
+      sql-executor:
+        condition: service_started
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HUGGINGFACEHUB_API_TOKEN=${HF_TOKEN}
+    command: python generate_database_knowledge.py
+
+  retriever:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./vectorstore:/app/vectorstore
+      - ./config.yml:/app/config.yml
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HUGGINGFACEHUB_API_TOKEN=${HF_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    command: sh -c "while [ ! -f /app/vectorstore/.ready ]; do sleep 2; done && uvicorn retriever_api:app --host 0.0.0.0 --port 8000 --workers 1"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 40s
+
+  sql-generator:
+    build: .
+    ports:
+      - "8001:8001"
+    depends_on:
+      retriever:
+        condition: service_healthy
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      - ./vectorstore:/app/vectorstore
+      - ./config.yml:/app/config.yml
+    command: sh -c "while [ ! -f /app/vectorstore/.ready ]; do sleep 2; done && uvicorn sql_api:app --host 0.0.0.0 --port 8001 --workers 1"
+
+  sql-executor:
+    build: .
+    ports:
+      - "8002:8002"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - ATHENA_OUTPUT_S3=${ATHENA_OUTPUT_S3}
+      - ATHENA_DATABASE=${ATHENA_DATABASE}
+    volumes:
+      - ./config.yml:/app/config.yml
+    command: uvicorn execute_sql_api:app --host 0.0.0.0 --port 8002 --workers 1
+
+  orchestrator:
+    build: .
+    ports:
+      - "8003:8003"
+    depends_on:
+      sql-executor:
+        condition: service_started
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    command: uvicorn orchestrator_api:app --host 0.0.0.0 --port 8003
+
+  streamlit-app:
+    build: .
+    container_name: streamlit_ui
+    ports:
+      - "8501:8501"
+    depends_on:
+      orchestrator:
+        condition: service_started
+      sql-executor:
+        condition: service_started
+    command: streamlit run frontend.py --server.port=8501 --server.address=0.0.0.0

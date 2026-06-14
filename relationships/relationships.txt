@@ -1,0 +1,2 @@
+# ORDER_SF -> ORDER_PRODUCT_SF
+order_sf.id = order_product_sf.orderid

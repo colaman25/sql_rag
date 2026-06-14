@@ -1,0 +1,98 @@
+platform:
+  type: athena
+  sql_dialect: "Presto SQL for AWS Athena"
+  database: dev
+  catalog: AWSDataCatalog
+  output_s3: s3://dennis-athena-result-bucket
+  region: eu-west-2
+
+embedding:
+  model_name: "Qwen/Qwen3-Embedding-0.6B"
+
+llm:
+  model_name: "nvidia/nemotron-3-super-120b-a12b:free"
+  temperature: 0
+
+semantic_dictionary:
+  src_asset_sf:
+    - productfamily
+    - status
+    - type__c
+    - product_brand__c
+    - product_colour__c
+    - product_asset_type__c
+    - warehouse_name__c
+  
+  src_order_sf:
+    - status
+    - record_type__c
+    - order_record_type_name__c
+
+  src_member_sf:
+    - status__c
+    - shippingcountry
+    - billingcountry
+
+  src_product_sf:
+    - family
+    - asset_type__c
+    - brand__c
+    - colour__c
+    - size__c
+
+  src_subscription_sf:
+    - status__c
+    - product_family__c
+
+  src_payment_sf:
+    - status__c
+    - type__c
+    - cancellation_source__c
+    - mandate_status__c
+
+  src_warehouse_location_sf:
+    - name
+    - warehouse__c
+
+  src_refund_sf:
+    - status__c
+
+  src_transaction_de_sf:
+    - status__c
+
+  fct_order_product_next_exchange:
+    - family
+    - order_record_type_name__c
+
+  fct_order_exchange_chain:
+    - family
+    - order_record_type_name__c
+    - first_exchange_category
+    - second_exchange_category
+    - third_exchange_category
+
+
+common_paths:
+  - path: "order_product_sf -> order_sf"
+    logic: "JOIN order_sf on order_product_sf.orderid = order_sf.id"
+    description: "Use this link to join multiple lines of UK order products to a single UK order."
+
+  - path: "order_product_sf -> subscription_sf"
+    logic: "JOIN subscription_sf on order_product_sf.id = subscription_sf.order_product__c"
+    description: "Use this link to join UK order product with its corresonpoding UK subscription"
+
+  - path: "order_product_sf -> asset_sf"
+    logic: "JOIN asset_sf on order_product_sf.asset__c = asset_sf.id"
+    description: "Use this link to join UK order product with its assigned UK bike asset"
+
+  - path: "asset_sf -> product_sf"
+    logic: "JOIN product_sf on asset_sf.product2id = product_sf.id"
+    description: "Use this link to find the product type of a UK bike asset"
+
+  - path: "payment_sf -> member_sf"
+    logic: "JOIN member_sf on payment_sf.member__c = member_sf.id"
+    description: "Use this link to find the UK member who made the payment"
+
+  - path: "order_sf -> member_sf"
+    logic: "JOIN member_sf on order_sf.accountid = member_sf.id"
+    description: "Use this link to find the UK member who placed the order"
