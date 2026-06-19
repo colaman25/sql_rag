@@ -13,6 +13,8 @@ retrievers = None
 async def lifespan(app: FastAPI):
     global schema_db, value_db, join_db, retrievers
     schema_db, value_db, join_db = load_vectorstore()
+    if schema_db._collection.count() == 0:
+        print("⚠️  Vector store is empty — run the indexer before querying: docker compose run --rm vector-builder")
     retrievers = build_retrievers(schema_db, value_db, join_db)
     yield
     # optional cleanup

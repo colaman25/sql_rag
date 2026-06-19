@@ -3,17 +3,16 @@ import json
 import re
 import shutil
 import os
-import requests
 import yaml
-import time
 from collections import defaultdict
+from adapters import get_adapter
 from langchain_core.documents import Document
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 
 DBT_PROJECT_PATH = os.getenv("DBT_PROJECT_PATH")
-SQL_EXECUTOR_URL = os.getenv("SQL_EXECUTOR_URL", "http://sql-executor:8002/execute")
+MANIFEST_PATH = os.getenv("MANIFEST_PATH", "/dbt/target/manifest.json")
 
 
 def load_config(config_path="/app/config.yml"):
@@ -195,39 +194,12 @@ When to use: Link {origin_table} to {to_table} via {fk_col}""",
     return docs
 
 
-def wait_for_executor(url=SQL_EXECUTOR_URL, timeout=60):
-    print(f"⏳ Waiting for {url} to be ready...")
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            requests.get(url.replace("/execute", "/docs"))
-            print("✅ Executor is up!")
-            return True
-        except requests.exceptions.ConnectionError:
-            time.sleep(2)
-    raise Exception("Timeout: SQL executor never started.")
-
-
-def get_sample_values(database, table, column, limit=200):
-    sql = f'SELECT DISTINCT "{column}" FROM "{database}"."{table}" WHERE "{column}" IS NOT NULL LIMIT {limit}'
-    payload = {"sql": sql, "session_id": "vector_build_session"}
-    try:
-        print(f"📡 Requesting samples for {table}.{column}...")
-        response = requests.post(SQL_EXECUTOR_URL, json=payload)
-        response.raise_for_status()
-        rows = response.json().get("data", {}).get("rows", [])
-        return [list(row.values())[0] for row in rows if row.values()]
-    except Exception as e:
-        print(f"⚠️ Failed to fetch samples for {table}.{column}: {e}")
-        return []
-
-
-def build_semantic_docs(config, database):
+def build_semantic_docs(config, adapter):
     semantic_docs = []
     print(f"DEBUG: Processing config for tables: {list(config.keys())}")
     for table, columns in config.items():
         for col in columns:
-            samples = get_sample_values(database, table, col)
+            samples = adapter.fetch_distinct_values(table, col)
             print(f"DEBUG: Found {len(samples)} samples for {table}.{col}")
 
             for val in samples:
@@ -243,78 +215,77 @@ def build_semantic_docs(config, database):
     return semantic_docs
 
 
-config = load_config('/app/config.yml')
-platform_cfg = config.get("platform", {})
-default_catalog = platform_cfg.get("catalog", "AWSDataCatalog")
-platform_database = platform_cfg.get("database") or os.getenv("ATHENA_DATABASE", "dev")
+if __name__ == "__main__":
+    config = load_config('/app/config.yml')
+    platform_cfg = config.get("platform", {})
+    default_catalog = platform_cfg.get("catalog", "AWSDataCatalog")
 
-semantic_config = config.get("semantic_dictionary", {})
-embedding_config = config.get("embedding", {})
-embedding_model = embedding_config.get(
-    "model_name",
-    "Qwen/Qwen3-Embedding-0.6B"
-)
+    semantic_config = config.get("semantic_dictionary", {})
+    embedding_config = config.get("embedding", {})
+    embedding_model = embedding_config.get(
+        "model_name",
+        "Qwen/Qwen3-Embedding-0.6B"
+    )
 
-manifest = load_manifest("/dbt/target/manifest.json")
+    adapter = get_adapter(config)
 
-dbt_docs, rel_map = dbt_to_documents(manifest, default_catalog=default_catalog)
+    manifest = load_manifest(MANIFEST_PATH)
 
-wait_for_executor()
+    dbt_docs, rel_map = dbt_to_documents(manifest, default_catalog=default_catalog)
 
-semantic_docs = build_semantic_docs(semantic_config, platform_database)
+    semantic_docs = build_semantic_docs(semantic_config, adapter)
 
-path_docs = build_path_docs(config)
-rel_map_path_docs = build_path_docs_from_rel_map(rel_map)
+    path_docs = build_path_docs(config)
+    rel_map_path_docs = build_path_docs_from_rel_map(rel_map)
 
-schema_docs = [
-    d for d in dbt_docs
-    if d.metadata["type"] in ["table", "column"]
-]
+    schema_docs = [
+        d for d in dbt_docs
+        if d.metadata["type"] in ["table", "column"]
+    ]
 
-value_docs = [
-    d for d in semantic_docs
-    if d.metadata["type"] == "value"
-]
+    value_docs = [
+        d for d in semantic_docs
+        if d.metadata["type"] == "value"
+    ]
 
-join_docs = path_docs + rel_map_path_docs
+    join_docs = path_docs + rel_map_path_docs
 
-print("📦 DBT docs:", len(dbt_docs))
-print("📦 Semantic docs:", len(semantic_docs))
-print("📦 Path docs (config):", len(path_docs))
-print("📦 Path docs (schema FK):", len(rel_map_path_docs))
+    print("📦 DBT docs:", len(dbt_docs))
+    print("📦 Semantic docs:", len(semantic_docs))
+    print("📦 Path docs (config):", len(path_docs))
+    print("📦 Path docs (schema FK):", len(rel_map_path_docs))
 
-SCHEMA_DIR = "./vectorstore/schema_db"
-VALUE_DIR = "./vectorstore/value_db"
-JOIN_DIR = "./vectorstore/join_db"
+    SCHEMA_DIR = "./vectorstore/schema_db"
+    VALUE_DIR = "./vectorstore/value_db"
+    JOIN_DIR = "./vectorstore/join_db"
 
-for d in [SCHEMA_DIR, VALUE_DIR, JOIN_DIR]:
-    if os.path.exists(d):
-        shutil.rmtree(d)
+    for d in [SCHEMA_DIR, VALUE_DIR, JOIN_DIR]:
+        if os.path.exists(d):
+            shutil.rmtree(d)
 
-HF_TOKEN = os.getenv("HF_TOKEN")
+    HF_TOKEN = os.getenv("HF_TOKEN")
 
-embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
+    embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
 
-schema_vs = Chroma.from_documents(
-    documents=schema_docs,
-    embedding=embeddings,
-    persist_directory=SCHEMA_DIR
-)
-schema_vs.persist()
+    schema_vs = Chroma.from_documents(
+        documents=schema_docs,
+        embedding=embeddings,
+        persist_directory=SCHEMA_DIR
+    )
+    schema_vs.persist()
 
-value_vs = Chroma.from_documents(
-    documents=value_docs,
-    embedding=embeddings,
-    persist_directory=VALUE_DIR
-)
-value_vs.persist()
+    value_vs = Chroma.from_documents(
+        documents=value_docs,
+        embedding=embeddings,
+        persist_directory=VALUE_DIR
+    )
+    value_vs.persist()
 
-join_vs = Chroma.from_documents(
-    documents=join_docs,
-    embedding=embeddings,
-    persist_directory=JOIN_DIR
-)
-join_vs.persist()
+    join_vs = Chroma.from_documents(
+        documents=join_docs,
+        embedding=embeddings,
+        persist_directory=JOIN_DIR
+    )
+    join_vs.persist()
 
-with open("/app/vectorstore/.ready", "w") as f:
-    f.write("done")
+    print("✅ Vector store build complete.")

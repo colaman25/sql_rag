@@ -1,6 +1,5 @@
 import boto3
 import time
-from fastapi import HTTPException
 
 from adapters.base import DatabaseAdapter
 
@@ -24,7 +23,7 @@ class AthenaAdapter(DatabaseAdapter):
 
         if status != "SUCCEEDED":
             reason = meta["QueryExecution"]["Status"].get("StateChangeReason", "Unknown error")
-            raise HTTPException(status_code=500, detail=f"Athena query failed: {reason}")
+            raise RuntimeError(f"Athena query failed: {reason}")
 
         return self._fetch_results(execution_id)
 

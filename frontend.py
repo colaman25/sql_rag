@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import uuid
+import os
 
 
 def build_sql_history(messages):
@@ -14,7 +15,7 @@ def build_sql_history(messages):
                 history.append("NOTE: User rejected this SQL as incorrect")
     return history
 
-ORCHESTRATOR_URL = "http://orchestrator:8003"
+ORCHESTRATOR_URL = os.getenv("QUERY_SERVICE_URL", "http://localhost:8003")
 
 st.set_page_config(page_title="Data Assistant", layout="wide")
 

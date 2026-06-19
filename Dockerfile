@@ -7,6 +7,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN apt-get update && apt-get install -y curl
 
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en')"
+COPY config.yml .
+RUN python -c "\
+import yaml; \
+cfg = yaml.safe_load(open('config.yml')); \
+model = cfg.get('embedding', {}).get('model_name', 'Qwen/Qwen3-Embedding-0.6B'); \
+print(f'Pre-loading embedding model: {model}'); \
+from sentence_transformers import SentenceTransformer; SentenceTransformer(model)"
 
 COPY . .

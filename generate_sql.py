@@ -1,7 +1,6 @@
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 import re
-import requests
 import os
 import yaml
 
@@ -11,8 +10,6 @@ from langchain_openai import ChatOpenAI
 # =========================================================
 # CONFIG
 # =========================================================
-
-RETRIEVER_API_URL = "http://retriever:8000/retrieve"
 
 def load_config(config_path="/app/config.yml"):
     if os.path.exists(config_path):
@@ -48,23 +45,6 @@ class State(TypedDict):
     sql: str
     error: str  # Added to track Athena errors
     history: list[str]
-
-
-# =========================================================
-# RETRIEVAL NODE
-# =========================================================
-
-def retrieve_node(state: State):
-    if not state.get("context"):
-        response = requests.post(
-            RETRIEVER_API_URL,
-            json={"question": state["question"]},
-            timeout=10
-        )
-        context = response.json()["context"]
-        return {"context": context}
-    
-    return {"context": state["context"]}
 
 
 # =========================================================
@@ -138,11 +118,8 @@ def generate_sql_node(state: State):
 graph = StateGraph(State)
 
 graph.add_node("generate_sql", generate_sql_node)
-graph.add_node("retrieve", retrieve_node)
 
-graph.set_entry_point("retrieve")
-
-graph.add_edge("retrieve", "generate_sql")
+graph.set_entry_point("generate_sql")
 
 app = graph.compile()
 
