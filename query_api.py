@@ -1,3 +1,5 @@
+import logging
+import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
@@ -5,6 +7,13 @@ import httpx
 import uuid
 import os
 import yaml
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from generate_sql import run_reasoning
 from adapters import get_adapter
@@ -83,6 +92,11 @@ def _run_sql_generation(
         status_code=500,
         detail=f"The AI failed to build a query. It said: {raw}",
     )
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.post("/generate-sql")

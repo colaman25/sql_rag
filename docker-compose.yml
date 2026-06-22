@@ -34,11 +34,17 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
     command: uvicorn retriever_api:app --host 0.0.0.0 --port 8000 --workers 1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 120s
+
+  dynamodb-local:
+    image: amazon/dynamodb-local
+    ports:
+      - "8004:8000"
+    command: -jar DynamoDBLocal.jar -inMemory
 
   query-service:
     build: .
@@ -47,6 +53,8 @@ services:
     depends_on:
       retriever:
         condition: service_healthy
+      dynamodb-local:
+        condition: service_started
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -54,8 +62,10 @@ services:
       - AWS_REGION=${AWS_REGION}
       - ATHENA_OUTPUT_S3=${ATHENA_OUTPUT_S3}
       - ATHENA_DATABASE=${ATHENA_DATABASE}
-      - SESSION_STORE=${SESSION_STORE}
       - RETRIEVER_URL=http://retriever:8000/retrieve
+      - SESSION_STORE=dynamodb
+      - DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+      - DYNAMODB_SESSION_TABLE=rag-sessions
     volumes:
       - ./config.yml:/app/config.yml
     command: uvicorn query_api:app --host 0.0.0.0 --port 8003

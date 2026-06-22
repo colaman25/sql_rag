@@ -1,7 +1,10 @@
+import logging
 import boto3
 import time
 
 from adapters.base import DatabaseAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class AthenaAdapter(DatabaseAdapter):
@@ -33,7 +36,7 @@ class AthenaAdapter(DatabaseAdapter):
             result = self.execute_query(sql)
             return [row.get(column) for row in result["rows"] if row.get(column) is not None]
         except Exception as e:
-            print(f"⚠️ Failed to fetch samples for {table}.{column}: {e}")
+            logger.warning("Failed to fetch samples for %s.%s: %s", table, column, e)
             return []
 
     def _wait_for_query(self, execution_id: str):

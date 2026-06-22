@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -7,6 +8,7 @@ import os
 import threading
 import yaml
 
+logger = logging.getLogger(__name__)
 
 SCHEMA_DIR = "./vectorstore/schema_db"
 VALUE_DIR = "./vectorstore/value_db"
@@ -19,7 +21,7 @@ def load_config(config_path="/app/config.yml"):
         with open(config_path, 'r') as file:
             data = yaml.safe_load(file)
             return data if data else {}
-    print("❌ Config file NOT found!")
+    logger.error("Config file not found at %s", config_path)
     return {}
 
 
@@ -48,9 +50,9 @@ def load_vectorstore():
         embedding_function=embeddings
     )
 
-    print(f"📊 schema DB: {schema_db._collection.count()}")
-    print(f"📊 value DB: {value_db._collection.count()}")
-    print(f"📊 join DB: {join_db._collection.count()}")
+    logger.info("schema DB: %d docs", schema_db._collection.count())
+    logger.info("value DB: %d docs", value_db._collection.count())
+    logger.info("join DB: %d docs", join_db._collection.count())
 
     return schema_db, value_db, join_db
 
@@ -82,19 +84,12 @@ def build_retrievers(schema_db, value_db, join_db):
 
 
 def print_docs(title, docs):
-    print(f"\n{'=' * 60}")
-    print(title)
-    print(f"{'=' * 60}")
-
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    lines = [f"\n{'=' * 60}", title, f"{'=' * 60}"]
     for i, doc in enumerate(docs, start=1):
-        print(f"\n--- DOC {i} ---")
-        print("Metadata:")
-        print(doc.metadata)
-
-        print("\nContent:")
-        print(doc.page_content[:1000])  # truncate if huge
-
-    print()
+        lines.append(f"\n--- DOC {i} ---\nMetadata: {doc.metadata}\nContent: {doc.page_content[:1000]}")
+    logger.debug("\n".join(lines))
 
 
 def generate_hyde_query(question: str, llm) -> str:
@@ -123,11 +118,11 @@ def retrieve_context(question: str, retrievers: dict) -> str:
     with db_lock:
         raw_columns = retrievers["column"].invoke(question)
     column_votes = Counter(c.metadata.get("model") for c in raw_columns)
-    print(f"🗳️ Column votes: {dict(column_votes)}")
+    logger.debug("Column votes: %s", dict(column_votes))
 
     # STEP 2: TABLES — fetch k=15 via HyDE, then re-rank by column votes
     hyde_query = generate_hyde_query(question, retrievers["llm"])
-    print(f"🔍 HyDE query: {hyde_query}")
+    logger.debug("HyDE query: %s", hyde_query)
     with db_lock:
         candidate_tables = retrievers["table"].invoke(hyde_query)
 

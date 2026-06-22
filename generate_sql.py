@@ -1,3 +1,4 @@
+import logging
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 import re
@@ -5,6 +6,8 @@ import os
 import yaml
 
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
 
 
 # =========================================================
@@ -16,7 +19,7 @@ def load_config(config_path="/app/config.yml"):
         with open(config_path, 'r') as file:
             data = yaml.safe_load(file)
             return data if data else {}
-    print("❌ Config file NOT found!")
+    logger.error("Config file not found at %s", config_path)
     return {}
 
 config = load_config()
@@ -143,5 +146,8 @@ def run_reasoning(question: str, history=None, previous_sql="", error_msg="", co
 # =========================================================
 
 if __name__ == "__main__":
+    import sys
+    import logging as _logging
+    _logging.basicConfig(stream=sys.stdout, level=_logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     result = run_reasoning("What are total sales last month?")
-    print(result)
+    logger.debug("SQL generation result: %s", result)

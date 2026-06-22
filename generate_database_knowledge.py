@@ -1,3 +1,4 @@
+import logging
 import pandas as pd
 import json
 import re
@@ -10,6 +11,8 @@ from langchain_core.documents import Document
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
+logger = logging.getLogger(__name__)
+
 
 DBT_PROJECT_PATH = os.getenv("DBT_PROJECT_PATH")
 MANIFEST_PATH = os.getenv("MANIFEST_PATH", "/dbt/target/manifest.json")
@@ -20,7 +23,7 @@ def load_config(config_path="/app/config.yml"):
         with open(config_path, 'r') as file:
             data = yaml.safe_load(file)
             return data if data else {}
-    print("❌ Config file NOT found!")
+    logger.error("Config file not found at %s", config_path)
     return {}
 
 
@@ -196,11 +199,11 @@ When to use: Link {origin_table} to {to_table} via {fk_col}""",
 
 def build_semantic_docs(config, adapter):
     semantic_docs = []
-    print(f"DEBUG: Processing config for tables: {list(config.keys())}")
+    logger.debug("Processing semantic config for tables: %s", list(config.keys()))
     for table, columns in config.items():
         for col in columns:
             samples = adapter.fetch_distinct_values(table, col)
-            print(f"DEBUG: Found {len(samples)} samples for {table}.{col}")
+            logger.debug("Found %d samples for %s.%s", len(samples), table, col)
 
             for val in samples:
                 semantic_docs.append(Document(
@@ -216,6 +219,12 @@ def build_semantic_docs(config, adapter):
 
 
 if __name__ == "__main__":
+    import sys
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     config = load_config('/app/config.yml')
     platform_cfg = config.get("platform", {})
     default_catalog = platform_cfg.get("catalog", "AWSDataCatalog")
@@ -250,10 +259,10 @@ if __name__ == "__main__":
 
     join_docs = path_docs + rel_map_path_docs
 
-    print("📦 DBT docs:", len(dbt_docs))
-    print("📦 Semantic docs:", len(semantic_docs))
-    print("📦 Path docs (config):", len(path_docs))
-    print("📦 Path docs (schema FK):", len(rel_map_path_docs))
+    logger.info("DBT docs: %d", len(dbt_docs))
+    logger.info("Semantic docs: %d", len(semantic_docs))
+    logger.info("Path docs (config): %d", len(path_docs))
+    logger.info("Path docs (schema FK): %d", len(rel_map_path_docs))
 
     SCHEMA_DIR = "./vectorstore/schema_db"
     VALUE_DIR = "./vectorstore/value_db"
@@ -288,4 +297,4 @@ if __name__ == "__main__":
     )
     join_vs.persist()
 
-    print("✅ Vector store build complete.")
+    logger.info("Vector store build complete")
