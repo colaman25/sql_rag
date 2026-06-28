@@ -7,14 +7,13 @@ services:
     volumes:
       - ./vectorstore:/app/vectorstore
       - ./config.yml:/app/config.yml
-      - ${DBT_PROJECT_PATH}:/dbt
     profiles:
       - setup
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - HUGGINGFACEHUB_API_TOKEN=${HF_TOKEN}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - ATHENA_AWS_ACCESS_KEY_ID=${ATHENA_AWS_ACCESS_KEY_ID}
+      - ATHENA_AWS_SECRET_ACCESS_KEY=${ATHENA_AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - ATHENA_OUTPUT_S3=${ATHENA_OUTPUT_S3}
       - ATHENA_DATABASE=${ATHENA_DATABASE}
@@ -40,12 +39,6 @@ services:
       retries: 5
       start_period: 120s
 
-  dynamodb-local:
-    image: amazon/dynamodb-local
-    ports:
-      - "8004:8000"
-    command: -jar DynamoDBLocal.jar -inMemory
-
   query-service:
     build: .
     ports:
@@ -53,18 +46,17 @@ services:
     depends_on:
       retriever:
         condition: service_healthy
-      dynamodb-local:
-        condition: service_started
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ATHENA_AWS_ACCESS_KEY_ID=${ATHENA_AWS_ACCESS_KEY_ID}
+      - ATHENA_AWS_SECRET_ACCESS_KEY=${ATHENA_AWS_SECRET_ACCESS_KEY}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
       - ATHENA_OUTPUT_S3=${ATHENA_OUTPUT_S3}
       - ATHENA_DATABASE=${ATHENA_DATABASE}
       - RETRIEVER_URL=http://retriever:8000/retrieve
-      - SESSION_STORE=dynamodb
-      - DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+      - SESSION_STORE=${SESSION_STORE}
       - DYNAMODB_SESSION_TABLE=rag-sessions
     volumes:
       - ./config.yml:/app/config.yml

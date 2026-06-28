@@ -1,4 +1,5 @@
 import logging
+import os
 import boto3
 import time
 
@@ -13,7 +14,12 @@ class AthenaAdapter(DatabaseAdapter):
     def __init__(self, database: str, output_s3: str, region: str):
         self.database = database
         self.output_s3 = output_s3
-        self.client = boto3.client("athena", region_name=region)
+        self.client = boto3.client(
+            "athena",
+            region_name=region,
+            aws_access_key_id=os.getenv("ATHENA_AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("ATHENA_AWS_SECRET_ACCESS_KEY"),
+        )
 
     def execute_query(self, sql: str) -> dict:
         execution_id = self.client.start_query_execution(

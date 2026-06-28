@@ -14,8 +14,7 @@ from langchain_community.vectorstores import Chroma
 logger = logging.getLogger(__name__)
 
 
-DBT_PROJECT_PATH = os.getenv("DBT_PROJECT_PATH")
-MANIFEST_PATH = os.getenv("MANIFEST_PATH", "/dbt/target/manifest.json")
+MANIFEST_PATH = os.getenv("MANIFEST_PATH")
 
 
 def load_config(config_path="/app/config.yml"):
@@ -27,7 +26,17 @@ def load_config(config_path="/app/config.yml"):
     return {}
 
 
-def load_manifest(path="target/manifest.json"):
+def load_manifest(path):
+    if path.startswith("s3://"):
+        import boto3
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("ATHENA_AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("ATHENA_AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION", "eu-west-2"),
+        )
+        bucket, key = path[5:].split("/", 1)
+        return json.loads(s3.get_object(Bucket=bucket, Key=key)["Body"].read())
     with open(path) as f:
         return json.load(f)
 
