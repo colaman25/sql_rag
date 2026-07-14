@@ -1,0 +1,25 @@
+{
+  "app": "python app.py",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "requirements*.txt",
+      "**/__pycache__",
+      "**/.venv"
+    ]
+  },
+  "context": {
+    "region": "eu-west-2",
+    "image_tag": "latest",
+    "allowed_cidr": "0.0.0.0/0",
+    "athena_output_s3": "s3://dennis-athena-result-bucket",
+    "athena_database": "dev",
+    "manifest_path": "",
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+    "@aws-cdk/aws-ecs:removeDefaultDeploymentAlarm": true
+  }
+}
